@@ -1,5 +1,6 @@
 const express = require('express');
 const { mongoose } = require('mongoose');
+const { ObjectID } = require('mongodb');
 const bodyParser = require('body-parser');
 const { User } = require('./models/user');
 const { Profile } = require('./models/profile');
@@ -59,19 +60,27 @@ app.post('/users/add', (req, res) => {
 
 });
 
+let updateUser = (id, updatedFields) => {
+    return new Promise((resolve, reject) => {
+        User.findById(id).then((user) => {
+            user.set(updatedFields);
+            user.save().then((updatedUser) => {
+                resolve ({ updatedUser, updated: true });
+            }, (err) => {
+                resolve ({ err, updated: false });
+            })
+        }, (err) => {
+            resolve ({ err, updated: false });
+        })
+    });
+};
+
 //users Update
 app.post('/users/update/:id', (req, res) => {
     let id = req.params.id;
     let updatedFields = req.body;
-    User.findById(id).then((user) => {
-        user.set(updatedFields);
-        user.save().then((updatedUser) => {
-            res.send({ updatedUser, updated: true });
-        }, (err) => {
-            res.send({ err, updated: false })
-        })
-    }, (err) => {
-        res.send({ err, updated: false })
+    updateUser(id, updatedFields).then((resObj) => {
+        res.send(resObj);
     });
 });
 
@@ -94,24 +103,100 @@ app.get('/users/:id/friends', (req, res) => {
     })
 })
 
+
+let getUserAndFriend = (userId, friendId) => {
+    return User.find({
+        '_id': {
+            '$in': [ObjectID(userId), ObjectID(friendId)]
+        }
+    }).then((users) => {
+        if (users.length === 2) {
+            let usersObj = {};
+            users.forEach((user) => {
+                if (user._id.equals(userId)) {
+                    usersObj.user = user;
+                }
+                else {
+                    usersObj.friendUser = user;
+                }
+            })
+            //console.log(users);
+            return usersObj;
+        }
+    });
+
+};
+
+
+let acceptFriend = (user, friendUser) => {
+    let currentUserFriends = user.friends;
+    let currentFriendFriends = friendUser.friends;
+    currentUserFriends.map((friend) => {
+        if (friendUser._id.equals(friend.id)) {
+            if (friend.requestStatus === 'pending' && friend.canApprove) {
+                friend.requestStatus = 'approved';
+                return friend;
+            }
+            else {
+                if (friend.canApprove) throw Error(user, friend, 'user doesnt have permission to approve friend!');
+                else throw Error(user, friend, 'request status isnt pending!');
+            }
+        }
+    });
+    currentFriendFriends.map((friend) => {
+        if (user._id.equals(friend.id)) {
+            friend.requestStatus = 'approved';
+            return friend;
+        }
+    });
+    updateUser(String(user._id),{friends: currentUserFriends}).then((resObj)=>{
+        updateUser(String(friendUser._id),{friends: currentFriendFriends});
+    });
+
+
+};
+
 //accept friend
-app.post('/users/:id/friends/accept/:friendId')
+app.post('/users/:id/friends/accept/:friendId', (req, res) => {
+    let id = req.params.id;
+    let friendId = req.params.friendId;
+    getUserAndFriend(id, friendId).then((usersObj) => {
+        let { user, friendUser } = usersObj;
+        acceptFriend(user, friendUser);
+
+    });
+    //     User.findById(id).then((user) => {
+    //         User.findById(friendId).then((friendUser) => {
+
+    //         })
+    //         let userFriends = user.friends;
+    //         userFriends.forEach((friend) => {
+    //             if (friend.id === friendId) {
+    //                 if (friend.requestStatus === 'pending' && friend.canApprove) {
+    //                     User.findById(friendId).then((friendUser) => {
+    //                         addFriend(user, friendUser);
+    //                     });
+    //                 }
+    //             }
+    //         });
+    //     });
+});
+
 
 //Add Friend
 app.post('/users/:id/friends/add/:friendId', (req, res) => {
     let id = req.params.id;
     let friendId = req.params.friendId;
+    
     User.findById(id).then((user) => {
         let currentFriends = user.friends;
-        for (friend of currentFriends) {
-            console.log('friend in',friend);
+        currentFriends.forEach((friend) => {
             if (friend.friendId === friendId) {
-                res.send({ user, added: false, errorMsg: 'friend already exists!' })
+                res.send({ user, added: false, errorMsg: 'friend already exists!' });
             }
-        }
-        console.log('current friends', currentFriends);
+        });
         User.findById(friendId).then((friendUser) => {
-            currentFriends.push({ friendId, requestStatus: 'pending', canApprove: false })
+            currentFriends.push({ id: friendId, requestStatus: 'pending', canApprove: false })
             user.set({ friends: currentFriends });
             let friendFriends = friendUser.friends;
             friendFriends.push({ id, requestStatus: 'pending', canApprove: true })
@@ -122,6 +207,8 @@ app.post('/users/:id/friends/add/:friendId', (req, res) => {
                 })
 
             });
+        }).catch((err) => {
+            res.send({ err, added: false });
         })
     })
 })
