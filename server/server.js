@@ -4,7 +4,8 @@ const { ObjectID } = require('mongodb');
 const bodyParser = require('body-parser');
 const { User } = require('./models/user');
 const { Profile } = require('./models/profile');
-
+const { getUserAndFriend, acceptFriend} = require('./helper_functions/friend_helper');
+const { updateUser } = require('./helper_functions/user_helper');
 
 let app = express();
 const port = process.argv[2] || 3000;
@@ -60,21 +61,6 @@ app.post('/users/add', (req, res) => {
 
 });
 
-let updateUser = (id, updatedFields) => {
-    return new Promise((resolve, reject) => {
-        User.findById(id).then((user) => {
-            user.set(updatedFields);
-            user.save().then((updatedUser) => {
-                resolve ({ updatedUser, updated: true });
-            }, (err) => {
-                resolve ({ err, updated: false });
-            })
-        }, (err) => {
-            resolve ({ err, updated: false });
-        })
-    });
-};
-
 //users Update
 app.post('/users/update/:id', (req, res) => {
     let id = req.params.id;
@@ -103,59 +89,6 @@ app.get('/users/:id/friends', (req, res) => {
     })
 })
 
-
-let getUserAndFriend = (userId, friendId) => {
-    return User.find({
-        '_id': {
-            '$in': [ObjectID(userId), ObjectID(friendId)]
-        }
-    }).then((users) => {
-        if (users.length === 2) {
-            let usersObj = {};
-            users.forEach((user) => {
-                if (user._id.equals(userId)) {
-                    usersObj.user = user;
-                }
-                else {
-                    usersObj.friendUser = user;
-                }
-            })
-            //console.log(users);
-            return usersObj;
-        }
-    });
-
-};
-
-
-let acceptFriend = (user, friendUser) => {
-    let currentUserFriends = user.friends;
-    let currentFriendFriends = friendUser.friends;
-    currentUserFriends.map((friend) => {
-        if (friendUser._id.equals(friend.id)) {
-            if (friend.requestStatus === 'pending' && friend.canApprove) {
-                friend.requestStatus = 'approved';
-                return friend;
-            }
-            else {
-                if (friend.canApprove) throw Error(user, friend, 'user doesnt have permission to approve friend!');
-                else throw Error(user, friend, 'request status isnt pending!');
-            }
-        }
-    });
-    currentFriendFriends.map((friend) => {
-        if (user._id.equals(friend.id)) {
-            friend.requestStatus = 'approved';
-            return friend;
-        }
-    });
-    updateUser(String(user._id),{friends: currentUserFriends}).then((resObj)=>{
-        updateUser(String(friendUser._id),{friends: currentFriendFriends});
-    });
-
-
-};
-
 //accept friend
 app.post('/users/:id/friends/accept/:friendId', (req, res) => {
     let id = req.params.id;
@@ -163,23 +96,7 @@ app.post('/users/:id/friends/accept/:friendId', (req, res) => {
     getUserAndFriend(id, friendId).then((usersObj) => {
         let { user, friendUser } = usersObj;
         acceptFriend(user, friendUser);
-
     });
-    //     User.findById(id).then((user) => {
-    //         User.findById(friendId).then((friendUser) => {
-
-    //         })
-    //         let userFriends = user.friends;
-    //         userFriends.forEach((friend) => {
-    //             if (friend.id === friendId) {
-    //                 if (friend.requestStatus === 'pending' && friend.canApprove) {
-    //                     User.findById(friendId).then((friendUser) => {
-    //                         addFriend(user, friendUser);
-    //                     });
-    //                 }
-    //             }
-    //         });
-    //     });
 });
 
 
