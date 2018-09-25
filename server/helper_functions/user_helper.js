@@ -10,17 +10,31 @@ let updateUser = (id, updatedFields) => {
         User.findById(id).then((user) => {
             user.set(updatedFields);
             user.save().then((updatedUser) => {
-                resolve ({ updatedUser, updated: true });
+                resolve({ updatedUser, updated: true });
             }, (err) => {
-                resolve ({ err, updated: false });
+                resolve({ err, updated: false });
             })
         }, (err) => {
-            resolve ({ err, updated: false });
+            resolve({ err, updated: false });
         })
     });
 };
 
+let updateUserObject = (user, updatedFields) => {
+    return new Promise((resolve, reject) => {
+        user.set(updatedFields);
+        user.save().then((updatedUser) => {
+            resolve({ updatedUser, updated: true });
+        }, (err) => {
+            reject({ err, updated: false });
+        })
+    }, (err) => {
+        reject({ err, updated: false });
+    });
+};
+
 module.exports = {
-    updateUser
+    updateUser,
+    updateUserObject
 };
 

@@ -4,8 +4,10 @@ const { ObjectID } = require('mongodb');
 const bodyParser = require('body-parser');
 const { User } = require('./models/user');
 const { Profile } = require('./models/profile');
-const { getUserAndFriend, acceptFriend} = require('./helper_functions/friend_helper');
-const { updateUser } = require('./helper_functions/user_helper');
+// const { getUserAndFriend, acceptFriend } = require('./helper_functions/friend_helper');
+const friendHelper = require('./helper_functions/friend_helper');
+// const { updateUser, updateUserObject } = require('./helper_functions/user_helper');
+const userHelper = require('./helper_functions/user_helper');
 
 let app = express();
 const port = process.argv[2] || 3000;
@@ -65,7 +67,7 @@ app.post('/users/add', (req, res) => {
 app.post('/users/update/:id', (req, res) => {
     let id = req.params.id;
     let updatedFields = req.body;
-    updateUser(id, updatedFields).then((resObj) => {
+    userHelper.updateUser(id, updatedFields).then((resObj) => {
         res.send(resObj);
     });
 });
@@ -93,42 +95,24 @@ app.get('/users/:id/friends', (req, res) => {
 app.post('/users/:id/friends/accept/:friendId', (req, res) => {
     let id = req.params.id;
     let friendId = req.params.friendId;
-    getUserAndFriend(id, friendId).then((usersObj) => {
+    friendHelper.getUserAndFriend(id, friendId).then((usersObj) => {
         let { user, friendUser } = usersObj;
-        acceptFriend(user, friendUser);
+        friendHelper.acceptFriend(user, friendUser).then((resObj)=>{
+            res.send(resObj);
+        }).catch((err) => {
+            res.send({err,accepted:false});
+        });
     });
 });
-
 
 //Add Friend
 app.post('/users/:id/friends/add/:friendId', (req, res) => {
     let id = req.params.id;
     let friendId = req.params.friendId;
-    
-    User.findById(id).then((user) => {
-        let currentFriends = user.friends;
-        currentFriends.forEach((friend) => {
-            if (friend.friendId === friendId) {
-                res.send({ user, added: false, errorMsg: 'friend already exists!' });
-            }
-        });
-        User.findById(friendId).then((friendUser) => {
-            currentFriends.push({ id: friendId, requestStatus: 'pending', canApprove: false })
-            user.set({ friends: currentFriends });
-            let friendFriends = friendUser.friends;
-            friendFriends.push({ id, requestStatus: 'pending', canApprove: true })
-            friendUser.set({ friends: friendFriends });
-            user.save().then((user) => {
-                friendUser.save().then((friendUser) => {
-                    res.send({ friendUser, user, added: true });
-                })
-
-            });
-        }).catch((err) => {
-            res.send({ err, added: false });
-        })
-    })
-})
+    friendHelper.addFriend(id, friendId).then((resObj) => {
+        res.send(resObj);
+    });
+});
 
 
 app.listen(port, () => {
